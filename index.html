@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<body style="background:#000;color:#0f0;font-family:monospace;display:grid;place-content:center;height:100vh">
+    <h2>WASM Result: <span id="r">..</span></h2>
+    <script>
+        fetch('tiny.wasm').then(r => r.arrayBuffer())
+        .then(b => WebAssembly.instantiate(b))
+        .then(o => { document.getElementById('r').textContent = o.instance.exports.add(20, 22); });
+    </script>
+</body>
+</html>
