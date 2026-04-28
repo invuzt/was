@@ -2,18 +2,25 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Wasm Solid GPU</title>
-    <style>body { margin: 0; background: #000; overflow: hidden; }</style>
+    <title>Wasm GPU Debug</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; color: #0f0; font-family: monospace; }
+        #debug { position: absolute; top: 10px; left: 10px; font-size: 12px; pointer-events: none; }
+    </style>
 </head>
 <body>
+    <div id="debug">Initializing...</div>
     <canvas id="g"></canvas>
     <script>
+        const log = (txt) => document.getElementById('debug').innerText += "\n> " + txt;
         const canvas = document.getElementById('g');
         const gl = canvas.getContext('webgl');
-        const width = canvas.width = window.innerWidth;
-        const height = canvas.height = window.innerHeight;
+        
+        if (!gl) { log("WebGL not supported"); }
 
-        // Vertex Shader: Proses transformasi 3D dan kirim warna ke fragment
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
         const vsSource = `
             attribute vec4 aPos;
             attribute vec3 aCol;
@@ -23,76 +30,74 @@
             void main() {
                 gl_Position = uPersp * uRot * aPos;
                 vCol = aCol;
-            }
-        `;
+            }`;
 
-        // Fragment Shader: Mewarnai pixel berdasarkan data dari vertex shader
         const fsSource = `
-            precision mediump f32;
+            precision mediump float;
             varying vec3 vCol;
-            void main() { gl_FragColor = vec4(vCol, 1.0); }
-        `;
+            void main() { gl_FragColor = vec4(vCol, 1.0); }`;
 
-        function createShader(gl, type, source) {
+        function createShader(type, src) {
             const s = gl.createShader(type);
-            gl.shaderSource(s, source);
+            gl.shaderSource(s, src);
             gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+                log("Shader Error: " + gl.getShaderInfoLog(s));
+            }
             return s;
         }
 
-        const program = gl.createProgram();
-        gl.attachShader(program, createShader(gl, gl.VERTEX_SHADER, vsSource));
-        gl.attachShader(program, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
-        gl.linkProgram(program);
-        gl.useProgram(program);
+        const prog = gl.createProgram();
+        gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(prog);
+        gl.useProgram(prog);
 
-        // Data Piramida (Posisi x,y,z dan Warna r,g,b)
         const data = new Float32Array([
-            // Top (R)   // Bottom-Left (G) // Bottom-Right (B)
-             0.0,  1.0,  0.0, 1,0,0,  -1.0, -1.0,  1.0, 0,1,0,   1.0, -1.0,  1.0, 0,0,1, // Depan
-             0.0,  1.0,  0.0, 1,0,0,   1.0, -1.0,  1.0, 0,0,1,   1.0, -1.0, -1.0, 0,1,0, // Kanan
-             0.0,  1.0,  0.0, 1,0,0,   1.0, -1.0, -1.0, 0,1,0,  -1.0, -1.0, -1.0, 0,0,1, // Belakang
-             0.0,  1.0,  0.0, 1,0,0,  -1.0, -1.0, -1.0, 0,0,1,  -1.0, -1.0,  1.0, 0,1,0  // Kiri
+             0.0, 1.0, 0.0, 1,0,0,  -1.0,-1.0, 1.0, 0,1,0,   1.0,-1.0, 1.0, 0,0,1,
+             0.0, 1.0, 0.0, 1,0,0,   1.0,-1.0, 1.0, 0,0,1,   1.0,-1.0,-1.0, 0,1,0,
+             0.0, 1.0, 0.0, 1,0,0,   1.0,-1.0,-1.0, 0,1,0,  -1.0,-1.0,-1.0, 0,0,1,
+             0.0, 1.0, 0.0, 1,0,0,  -1.0,-1.0,-1.0, 0,0,1,  -1.0,-1.0, 1.0, 0,1,0
         ]);
 
-        const buffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        const buf = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
-        const FSIZE = data.BYTES_PER_ELEMENT;
-        const aPos = gl.getAttribLocation(program, "aPos");
-        gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, FSIZE * 6, 0);
+        const aPos = gl.getAttribLocation(prog, "aPos");
+        gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0);
         gl.enableVertexAttribArray(aPos);
 
-        const aCol = gl.getAttribLocation(program, "aCol");
-        gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, FSIZE * 6, FSIZE * 3);
+        const aCol = gl.getAttribLocation(prog, "aCol");
+        gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 24, 12);
         gl.enableVertexAttribArray(aCol);
 
-        const uRot = gl.getUniformLocation(program, "uRot");
-        const uPersp = gl.getUniformLocation(program, "uPersp");
-        
-        gl.enable(gl.DEPTH_TEST); // Wajib untuk 3D solid agar tidak tembus pandang
-        gl.clearColor(0,0,0,1);
+        const uRot = gl.getUniformLocation(prog, "uRot");
+        const uPersp = gl.getUniformLocation(prog, "uPersp");
+
+        gl.enable(gl.DEPTH_TEST);
+        gl.clearColor(0, 0, 0, 1);
 
         let wasm, angle = 0;
-        const matPtr = 0; 
-
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
-        .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
+        .then(b => WebAssembly.instantiate(b)).then(o => {
+            wasm = o.instance;
+            log("WASM Loaded");
+            loop();
+        }).catch(e => log("WASM Error: " + e));
 
         function loop() {
-            angle += 0.01;
-            // Rust hitung matrix rotasi dan perspektif
-            wasm.exports.make_transforms(angle, width/height, matPtr);
+            angle += 0.02;
+            wasm.exports.make_transforms(angle, canvas.width/canvas.height);
             
-            const rotData = new Float32Array(wasm.exports.memory.buffer, matPtr, 16);
-            const perspData = new Float32Array(wasm.exports.memory.buffer, matPtr + 16 * 4, 16);
+            const ptr = wasm.exports.get_mat_ptr();
+            const rotM = new Float32Array(wasm.exports.memory.buffer, ptr, 16);
+            const perspM = new Float32Array(wasm.exports.memory.buffer, ptr + 64, 16);
 
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-            gl.uniformMatrix4fv(uRot, false, rotData);
-            gl.uniformMatrix4fv(uPersp, false, perspData);
-            
-            gl.drawArrays(gl.TRIANGLES, 0, 12); // Gambar 4 segitiga (12 vertices)
+            gl.uniformMatrix4fv(uRot, false, rotM);
+            gl.uniformMatrix4fv(uPersp, false, perspM);
+            gl.drawArrays(gl.TRIANGLES, 0, 12);
             requestAnimationFrame(loop);
         }
     </script>
