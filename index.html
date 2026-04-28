@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Wasm GPU 3D</title>
+    <title>Wasm Solid GPU</title>
     <style>body { margin: 0; background: #000; overflow: hidden; }</style>
 </head>
 <body>
@@ -10,18 +10,28 @@
     <script>
         const canvas = document.getElementById('g');
         const gl = canvas.getContext('webgl');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const width = canvas.width = window.innerWidth;
+        const height = canvas.height = window.innerHeight;
 
-        // Vertex Shader (Berjalan di GPU)
+        // Vertex Shader: Proses transformasi 3D dan kirim warna ke fragment
         const vsSource = `
             attribute vec4 aPos;
-            uniform mat4 uMat;
-            void main() { gl_Position = uMat * aPos; }
+            attribute vec3 aCol;
+            uniform mat4 uRot;
+            uniform mat4 uPersp;
+            varying vec3 vCol;
+            void main() {
+                gl_Position = uPersp * uRot * aPos;
+                vCol = aCol;
+            }
         `;
 
-        // Fragment Shader (Warna di GPU)
-        const fsSource = "void main() { gl_FragColor = vec4(0.0, 1.0, 0.0, 1.0); }";
+        // Fragment Shader: Mewarnai pixel berdasarkan data dari vertex shader
+        const fsSource = `
+            precision mediump f32;
+            varying vec3 vCol;
+            void main() { gl_FragColor = vec4(vCol, 1.0); }
+        `;
 
         function createShader(gl, type, source) {
             const s = gl.createShader(type);
@@ -36,32 +46,53 @@
         gl.linkProgram(program);
         gl.useProgram(program);
 
-        // Data Segitiga
-        const vertices = new Float32Array([0, 0.5, 0,  -0.5, -0.5, 0,  0.5, -0.5, 0]);
+        // Data Piramida (Posisi x,y,z dan Warna r,g,b)
+        const data = new Float32Array([
+            // Top (R)   // Bottom-Left (G) // Bottom-Right (B)
+             0.0,  1.0,  0.0, 1,0,0,  -1.0, -1.0,  1.0, 0,1,0,   1.0, -1.0,  1.0, 0,0,1, // Depan
+             0.0,  1.0,  0.0, 1,0,0,   1.0, -1.0,  1.0, 0,0,1,   1.0, -1.0, -1.0, 0,1,0, // Kanan
+             0.0,  1.0,  0.0, 1,0,0,   1.0, -1.0, -1.0, 0,1,0,  -1.0, -1.0, -1.0, 0,0,1, // Belakang
+             0.0,  1.0,  0.0, 1,0,0,  -1.0, -1.0, -1.0, 0,0,1,  -1.0, -1.0,  1.0, 0,1,0  // Kiri
+        ]);
+
         const buffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
+        const FSIZE = data.BYTES_PER_ELEMENT;
         const aPos = gl.getAttribLocation(program, "aPos");
+        gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, FSIZE * 6, 0);
         gl.enableVertexAttribArray(aPos);
-        gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 0, 0);
 
-        const uMat = gl.getUniformLocation(program, "uMat");
+        const aCol = gl.getAttribLocation(program, "aCol");
+        gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, FSIZE * 6, FSIZE * 3);
+        gl.enableVertexAttribArray(aCol);
+
+        const uRot = gl.getUniformLocation(program, "uRot");
+        const uPersp = gl.getUniformLocation(program, "uPersp");
+        
+        gl.enable(gl.DEPTH_TEST); // Wajib untuk 3D solid agar tidak tembus pandang
+        gl.clearColor(0,0,0,1);
+
         let wasm, angle = 0;
-        const matPtr = 0; // Alamat memori di Wasm
+        const matPtr = 0; 
 
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
         .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
 
         function loop() {
-            angle += 0.02;
-            // Minta Rust hitung matrix rotasi
-            wasm.exports.get_rotation_matrix(angle, matPtr);
-            const matData = new Float32Array(wasm.exports.memory.buffer, matPtr, 16);
+            angle += 0.01;
+            // Rust hitung matrix rotasi dan perspektif
+            wasm.exports.make_transforms(angle, width/height, matPtr);
+            
+            const rotData = new Float32Array(wasm.exports.memory.buffer, matPtr, 16);
+            const perspData = new Float32Array(wasm.exports.memory.buffer, matPtr + 16 * 4, 16);
 
-            gl.clear(gl.COLOR_BUFFER_BIT);
-            gl.uniformMatrix4fv(uMat, false, matData); // Kirim matrix ke GPU
-            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.uniformMatrix4fv(uRot, false, rotData);
+            gl.uniformMatrix4fv(uPersp, false, perspData);
+            
+            gl.drawArrays(gl.TRIANGLES, 0, 12); // Gambar 4 segitiga (12 vertices)
             requestAnimationFrame(loop);
         }
     </script>
