@@ -3,44 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Slint 3D Camera</title>
+    <title>Wasm Cam Shutter</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; }
-        canvas#gl-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        video#cam { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0; transition: 0.5s; }
-        canvas#slint-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
-        /* Slint butuh pointer-events di element spesifik, tapi di sini kita buat transparan */
+        video { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+        canvas#slint-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+        .flash { position: absolute; width: 100%; height: 100%; background: white; z-index: 100; opacity: 0; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="flash" class="flash"></div>
     <video id="cam" autoplay playsinline></video>
-    <canvas id="gl-canvas"></canvas>
+    
     <script type="module">
         import init from './pkg/wasm_tiny.js';
         
-        let cameraActive = false;
         const video = document.getElementById('cam');
+        const flash = document.getElementById('flash');
 
-        window.web_toggle_camera = async () => {
-            if(!cameraActive) {
-                const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}});
+        // Fungsi Shutter yang dipanggil dari Rust
+        window.js_capture_shutter = () => {
+            // Efek Flash
+            flash.style.opacity = "1";
+            setTimeout(() => flash.style.opacity = "0", 100);
+
+            // Capture Frame
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            // Download Hasil Foto
+            const link = document.createElement('a');
+            link.download = `shot_${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        };
+
+        async function startCam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
                 video.srcObject = stream;
-                video.style.opacity = "0.4";
-                cameraActive = true;
-            } else {
-                video.srcObject.getTracks().forEach(t => t.stop());
-                video.style.opacity = "0";
-                cameraActive = false;
-            }
-        };
+            } catch (e) { alert("Camera Error: " + e); }
+        }
 
-        window.web_change_model = (ptr, len) => {
-            console.log("Model changed via Slint");
-        };
-
-        init().then(() => {
-            console.log("Slint & WASM Loaded");
-        });
+        startCam();
+        init();
     </script>
 </body>
 </html>

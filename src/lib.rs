@@ -1,22 +1,13 @@
 #![no_std]
-extern crate alloc;
-
 slint::include_modules!();
-
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
 pub fn main_slint() {
     let ui = AppWindow::new().unwrap();
-    let ui_handle = ui.as_weak();
-
-    ui.on_change_model(|m| {
-        // Kirim event ke JS untuk ganti model
-        unsafe { web_change_model(m.as_str().as_ptr(), m.len()); }
-    });
-
-    ui.on_toggle_camera(|| {
-        unsafe { web_toggle_camera(); }
+    
+    ui.on_take_photo(|| {
+        unsafe { js_capture_shutter(); }
     });
 
     ui.run().unwrap();
@@ -24,8 +15,7 @@ pub fn main_slint() {
 
 #[wasm_bindgen]
 extern "C" {
-    fn web_change_model(name_ptr: *const u8, len: usize);
-    fn web_toggle_camera();
+    fn js_capture_shutter();
 }
 
 #[panic_handler]
