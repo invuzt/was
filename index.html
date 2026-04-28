@@ -1,11 +1,46 @@
 <!DOCTYPE html>
 <html>
-<body style="background:#000;color:#0f0;font-family:monospace;display:grid;place-content:center;height:100vh">
-    <h2>WASM Result: <span id="r">..</span></h2>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wasm Cam</title>
+    <style>
+        body { background: #000; color: #0f0; font-family: monospace; text-align: center; margin: 0; overflow: hidden; }
+        video { width: 100%; max-width: 500px; border: 2px solid #0f0; border-radius: 8px; margin-top: 20px; }
+        .status { padding: 10px; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+    <div class="status">WASM CAM STATUS: <span id="ws">Loading...</span></div>
+    <video id="cam" autoplay playsinline></video>
+
     <script>
+        const video = document.getElementById('cam');
+        const wsStatus = document.getElementById('ws');
+
+        // 1. Load WASM
         fetch('tiny.wasm').then(r => r.arrayBuffer())
         .then(b => WebAssembly.instantiate(b))
-        .then(o => { document.getElementById('r').textContent = o.instance.exports.add(20, 22); });
+        .then(o => {
+            const res = o.instance.exports.process_frame(41);
+            wsStatus.textContent = "ACTIVE (Result: " + res + ")";
+        });
+
+        // 2. Akses Kamera
+        async function startCam() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" }, 
+                    audio: false 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                wsStatus.textContent = "ERROR: " + err.message;
+                wsStatus.style.color = "red";
+            }
+        }
+
+        startCam();
     </script>
 </body>
 </html>

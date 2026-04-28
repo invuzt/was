@@ -1,5 +1,12 @@
 #![no_std]
+
 #[no_mangle]
-pub extern "C" fn add(a: i32, b: i32) -> i32 { a + b }
+pub extern "C" fn process_frame(val: i32) -> i32 {
+    // Contoh logika: jika kita ingin memproses data pixel nantinya
+    val + 1 
+}
+
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! { loop {} }
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop {}
+}
