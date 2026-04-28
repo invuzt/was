@@ -10,35 +10,48 @@ pub extern "C" fn get_buffer_ptr() -> *const u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn detect_features() -> i32 {
-    let mut min_bright = 255;
-    let mut eye_idx = 0;
-    let mut mouth_idx = 0;
-    let mut max_diff = 0;
+pub extern "C" fn detect_geometry() -> i64 {
+    let mut e1: (u32, u32, u32) = (0, 0, 0); // x, y, count (Mata Kiri)
+    let mut e2: (u32, u32, u32) = (0, 0, 0); // x, y, count (Mata Kanan)
+    let mut n: (u32, u32, u32) = (0, 0, 0);  // x, y, count (Hidung)
+    let mut m: (u32, u32, u32) = (0, 0, 0);  // x, y, count (Mulut)
 
     unsafe {
-        // Deteksi Mata (Cari area paling gelap di 2/3 atas layar)
-        for i in (0..(BUFFER.len() * 2 / 3)).step_by(4) {
-            let b = (BUFFER[i] as u32 + BUFFER[i+1] as u32 + BUFFER[i+2] as u32) / 3;
-            if b < min_bright {
-                min_bright = b;
-                eye_idx = i / 4;
-            }
-        }
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let i = (y * WIDTH + x) * 4;
+                let r = BUFFER[i] as u32;
+                let g = BUFFER[i+1] as u32;
+                let b = BUFFER[i+2] as u32;
+                let bright = (r + g + b) / 3;
 
-        // Deteksi Mulut (Cari area kontras tinggi di 1/3 bawah layar)
-        for i in ((BUFFER.len() * 2 / 3)..BUFFER.len()).step_by(4) {
-            let r = BUFFER[i] as i32;
-            let g = BUFFER[i+1] as i32;
-            let diff = (r - g).abs(); // Mulut biasanya lebih merah/kontras
-            if diff > max_diff {
-                max_diff = diff;
-                mouth_idx = i / 4;
+                // ZONING & THRESHOLDING
+                if y < 45 { // Area Mata (Atas)
+                    if bright < 60 { // Titik gelap
+                        if x < 50 { e1.0 += x as u32; e1.1 += y as u32; e1.2 += 1; }
+                        else { e2.0 += x as u32; e2.1 += y as u32; e2.2 += 1; }
+                    }
+                } else if y < 70 { // Area Hidung (Tengah)
+                    if bright > 180 { // Titik terang (ujung hidung biasanya kena cahaya)
+                        n.0 += x as u32; n.1 += y as u32; n.2 += 1;
+                    }
+                } else { // Area Mulut (Bawah)
+                    if (r as i32 - g as i32).abs() > 20 { // Kontras bibir
+                        m.0 += x as u32; m.1 += y as u32; m.2 += 1;
+                    }
+                }
             }
         }
     }
-    // Pack koordinat: Eye (bits 0-15), Mouth (bits 16-31)
-    ((mouth_idx as i32) << 16) | (eye_idx as i32)
+
+    // Hitung Centroid (Rata-rata posisi)
+    let p1 = if e1.2 > 0 { (e1.1 / e1.2) << 8 | (e1.0 / e1.2) } else { 0 };
+    let p2 = if e2.2 > 0 { (e2.1 / e2.2) << 8 | (e2.0 / e2.2) } else { 0 };
+    let p3 = if n.2 > 0 { (n.1 / n.2) << 8 | (n.0 / n.2) } else { 0 };
+    let p4 = if m.2 > 0 { (m.1 / m.2) << 8 | (m.0 / m.2) } else { 0 };
+
+    // Pack 4 koordinat ke 64-bit
+    ((p4 as i64) << 48) | ((p3 as i64) << 32) | ((p2 as i64) << 16) | (p1 as i64)
 }
 
 #[panic_handler]

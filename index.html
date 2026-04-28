@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wasm Feature Detect</title>
+    <title>Wasm Face Geometry</title>
     <style>
         body { background: #000; color: #0f0; font-family: monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
-        #container { position: relative; margin-top: 20px; }
-        video, canvas { border: 1px solid #333; border-radius: 4px; }
+        #container { position: relative; margin-top: 10px; }
+        video, canvas { border: 1px solid #222; border-radius: 10px; }
         #overlay { position: absolute; top: 0; left: 0; }
-        .stats { padding: 10px; font-size: 10px; color: #888; }
+        .log { font-size: 10px; color: #0f0; width: 320px; padding: 5px; }
     </style>
 </head>
 <body>
-    <div class="stats">> SCANNING_FACIAL_ZONES...</div>
+    <div class="log">> GEOMETRY_SCAN: ACTIVE</div>
     <div id="container">
         <video id="v" width="320" height="240" autoplay playsinline></video>
         <canvas id="overlay" width="320" height="240"></canvas>
@@ -30,11 +30,8 @@
 
         navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}}).then(s => v.srcObject = s);
 
-        function drawMarker(x, y, label, color) {
-            ovl.strokeStyle = color;
-            ovl.strokeRect(x-15, y-10, 30, 20);
-            ovl.fillStyle = color;
-            ovl.fillText(label, x-15, y-15);
+        function unpack(val) {
+            return { x: (val & 0xFF) * 3.2, y: ((val >> 8) & 0xFF) * 2.4 };
         }
 
         function loop() {
@@ -44,17 +41,33 @@
             const buf = new Uint8Array(wasm.exports.memory.buffer, ptr, 100 * 100 * 4);
             buf.set(imgData.data);
 
-            const res = wasm.exports.detect_features();
-            const eyeIdx = res & 0xFFFF;
-            const mouthIdx = (res >> 16) & 0xFFFF;
+            const res = wasm.exports.detect_geometry();
+            const p1 = unpack(Number(res & 0xFFFFn));
+            const p2 = unpack(Number((res >> 16n) & 0xFFFFn));
+            const p3 = unpack(Number((res >> 32n) & 0xFFFFn));
+            const p4 = unpack(Number((res >> 48n) & 0xFFFFn));
 
             ovl.clearRect(0,0,320,240);
-            ovl.font = '10px monospace';
+            ovl.lineWidth = 1;
             
-            // Render Mata
-            drawMarker((eyeIdx % 100) * 3.2, Math.floor(eyeIdx / 100) * 2.4, "EYES", "#0af");
-            // Render Mulut
-            drawMarker((mouthIdx % 100) * 3.2, Math.floor(mouthIdx / 100) * 2.4, "MOUTH", "#f0a");
+            // Draw Points
+            [[p1, 'EYE_L'], [p2, 'EYE_R'], [p3, 'NOSE'], [p4, 'MOUTH']].forEach(([p, l]) => {
+                if(p.x > 0) {
+                    ovl.strokeStyle = '#0f0';
+                    ovl.strokeRect(p.x-5, p.y-5, 10, 10);
+                    ovl.fillStyle = '#0f0';
+                    ovl.fillText(l, p.x+8, p.y+4);
+                }
+            });
+
+            // Draw Triangle Logic
+            if(p1.x && p2.x && p4.x) {
+                ovl.beginPath();
+                ovl.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+                ovl.moveTo(p1.x, p1.y); ovl.lineTo(p2.x, p2.y);
+                ovl.lineTo(p4.x, p4.y); ovl.closePath();
+                ovl.stroke();
+            }
             
             requestAnimationFrame(loop);
         }
