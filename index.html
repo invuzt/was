@@ -3,43 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wasm Face Focus</title>
+    <title>Wasm Stable Focus</title>
     <style>
         body { background: #000; color: #0f0; font-family: monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
         #container { position: relative; margin-top: 20px; }
-        video, canvas { border: 2px solid #0f0; border-radius: 8px; }
-        #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
-        .stats { padding: 10px; font-size: 12px; width: 100%; max-width: 400px; }
+        video, canvas { border: 1px solid #0f0; border-radius: 4px; }
+        #overlay { position: absolute; top: 0; left: 0; }
+        .stats { padding: 10px; font-size: 10px; width: 100%; text-align: center; }
     </style>
 </head>
 <body>
-    <div class="stats">
-        > WASM_DETECT: <span id="ws">loading...</span><br>
-        > FOCUS_COORD: <span id="fc">0,0</span>
-    </div>
+    <div class="stats">> STABILIZING_ACTIVE | COORD: <span id="fc">0,0</span></div>
     <div id="container">
         <video id="v" width="320" height="240" autoplay playsinline></video>
         <canvas id="overlay" width="320" height="240"></canvas>
     </div>
     <canvas id="proc" width="100" height="100" style="display:none"></canvas>
-
     <script>
         const v = document.getElementById('v');
         const proc = document.getElementById('proc').getContext('2d', {willReadFrequently: true});
         const ovl = document.getElementById('overlay').getContext('2d');
-        const ws = document.getElementById('ws');
         const fc = document.getElementById('fc');
-
         let wasm;
-        fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
-        .then(b => WebAssembly.instantiate(b)).then(o => {
-            wasm = o.instance;
-            ws.textContent = "ALGO_ACTIVE";
-            loop();
-        });
 
-        navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}})
-        .then(s => v.srcObject = s);
+        fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
+        .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
+
+        navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}}).then(s => v.srcObject = s);
 
         function loop() {
             proc.drawImage(v, 0, 0, 100, 100);
@@ -48,18 +38,15 @@
             const buf = new Uint8Array(wasm.exports.memory.buffer, ptr, 100 * 100 * 4);
             buf.set(imgData.data);
 
-            const idx = wasm.exports.detect_brightest();
-            const x = (idx % 100) * (320/100);
-            const y = Math.floor(idx / 100) * (240/100);
+            const res = wasm.exports.detect_focus();
+            const x = (res & 0xFFFF) * (320/100);
+            const y = (res >> 16) * (240/100);
 
             ovl.clearRect(0,0,320,240);
             ovl.strokeStyle = '#0f0';
-            ovl.lineWidth = 2;
-            ovl.strokeRect(x-20, y-20, 40, 40);
-            ovl.beginPath();
-            ovl.moveTo(x, y-5); ovl.lineTo(x, y+5);
-            ovl.moveTo(x-5, y); ovl.lineTo(x+5, y);
-            ovl.stroke();
+            ovl.strokeRect(x-30, y-30, 60, 60);
+            ovl.fillStyle = '#0f0';
+            ovl.fillRect(x-2, y-2, 4, 4);
             
             fc.textContent = Math.round(x) + "," + Math.round(y);
             requestAnimationFrame(loop);
