@@ -1,4 +1,4 @@
-#![no_std]
+// Kita hapus #![no_std] agar lebih mudah kompatibel dengan Slint 'std'
 slint::include_modules!();
 use wasm_bindgen::prelude::*;
 
@@ -17,6 +17,3 @@ pub fn main_slint() {
 extern "C" {
     fn js_capture_shutter();
 }
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! { loop {} }

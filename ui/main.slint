@@ -1,33 +1,34 @@
-import { Button } from "std-widgets.slint";
-
 export component AppWindow inherits Window {
-    width: 100%;
-    height: 100%;
+    // Di Wasm, Window akan otomatis memenuhi canvas pembungkusnya
     background: transparent;
     
     callback take_photo();
 
+    // Area interaksi
     Rectangle {
-        // Lingkaran Shutter di tengah bawah
-        TouchArea {
-            width: 70px;
-            height: 70px;
+        width: 100%;
+        height: 100%;
+
+        // Tombol Shutter
+        Rectangle {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border-radius: 40px;
             y: parent.height - 100px;
-            clicked => { root.take_photo(); }
-            
-            Rectangle {
-                border-radius: 35px;
-                background: white;
-                border-width: 5px;
-                border-color: rgba(255, 255, 255, 0.3);
-                
-                Text {
-                    text: "REC";
-                    color: red;
-                    font-size: 12px;
-                    font-weight: 900;
-                }
+            border-width: 4px;
+            border-color: #cccccc;
+
+            touch := TouchArea {
+                clicked => { root.take_photo(); }
             }
+            
+            // Efek visual saat ditekan
+            states [
+                pressed when touch.pressed : {
+                    background: #aaaaaa;
+                }
+            ]
         }
     }
 }
