@@ -1,16 +1,29 @@
-name: Slint Deploy
+name: Fast Deploy
 on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: rustup target add wasm32-unknown-unknown
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-      - run: wasm-pack build --target web --release
+      
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM
+        run: |
+          rustup target add wasm32-unknown-unknown
+          # Menggunakan LLD untuk linking yang lebih cepat
+          RUSTFLAGS="-C link-arg=-fuse-ld=lld" wasm-pack build --target web --release
+
       - uses: actions/upload-pages-artifact@v3
         with: { path: . }
+
   deploy:
     needs: build
     permissions: { pages: write, id-token: write }
