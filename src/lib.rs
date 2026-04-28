@@ -1,34 +1,31 @@
 #![no_std]
-use libm::{sinf, cosf, tanf};
+extern crate alloc;
 
-static mut MATRICES: [f32; 32] = [0.0; 32];
+slint::include_modules!();
 
-#[no_mangle]
-pub extern "C" fn get_mat_ptr() -> *const f32 {
-    unsafe { MATRICES.as_ptr() }
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen(start)]
+pub fn main_slint() {
+    let ui = AppWindow::new().unwrap();
+    let ui_handle = ui.as_weak();
+
+    ui.on_change_model(|m| {
+        // Kirim event ke JS untuk ganti model
+        unsafe { web_change_model(m.as_str().as_ptr(), m.len()); }
+    });
+
+    ui.on_toggle_camera(|| {
+        unsafe { web_toggle_camera(); }
+    });
+
+    ui.run().unwrap();
 }
 
-#[no_mangle]
-pub extern "C" fn update_params(rx: f32, ry: f32, aspect: f32) {
-    unsafe {
-        let sx = sinf(rx); let cx = cosf(rx);
-        let sy = sinf(ry); let cy = cosf(ry);
-
-        // Matrix Rotasi Y * X
-        MATRICES[0] = cy;       MATRICES[1] = sy * sx;  MATRICES[2] = sy * cx;  MATRICES[3] = 0.0;
-        MATRICES[4] = 0.0;      MATRICES[5] = cx;       MATRICES[6] = -sx;      MATRICES[7] = 0.0;
-        MATRICES[8] = -sy;      MATRICES[9] = cy * sx;  MATRICES[10] = cy * cx; MATRICES[11] = 0.0;
-        MATRICES[12] = 0.0;     MATRICES[13] = 0.0;     MATRICES[14] = -5.0;    MATRICES[15] = 1.0;
-
-        // Matrix Perspektif (FOV 45 deg)
-        let f = 1.0 / tanf(0.5);
-        MATRICES[16] = f / aspect;
-        MATRICES[21] = f;
-        MATRICES[26] = -1.1;
-        MATRICES[27] = -1.0;
-        MATRICES[30] = -0.2;
-        MATRICES[31] = 0.0;
-    }
+#[wasm_bindgen]
+extern "C" {
+    fn web_change_model(name_ptr: *const u8, len: usize);
+    fn web_toggle_camera();
 }
 
 #[panic_handler]

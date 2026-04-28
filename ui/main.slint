@@ -1,0 +1,52 @@
+import { Button, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    
+    in-out property <string> status: "IDLE";
+    callback change_model(string);
+    callback toggle_camera();
+
+    // UI Overlay di atas WebGL
+    Rectangle {
+        VerticalBox {
+            alignment: start;
+            padding: 20px;
+            
+            Text {
+                text: "SLINT 3D STUDIO v2.0";
+                color: #0f0;
+                font-size: 18px;
+                font-weight: 700;
+            }
+            
+            Text {
+                text: "Status: " + root.status;
+                color: #0f0;
+                font-family: "monospace";
+            }
+
+            Rectangle { vertical-stretch: 1; } // Spacer
+
+            HorizontalBox {
+                alignment: center;
+                spacing: 10px;
+                Button { 
+                    text: "CUBE"; 
+                    clicked => { root.change_model("cube"); }
+                }
+                Button { 
+                    text: "PYRAMID"; 
+                    clicked => { root.change_model("pyramid"); }
+                }
+                Button { 
+                    text: "CAMERA"; 
+                    primary: true;
+                    clicked => { root.toggle_camera(); }
+                }
+            }
+        }
+    }
+}

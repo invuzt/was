@@ -3,108 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Fixer</title>
+    <title>Slint 3D Camera</title>
     <style>
-        body { margin: 0; background: #000; color: #0f0; font-family: monospace; overflow: hidden; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        #log { position: absolute; top: 10px; left: 10px; font-size: 10px; background: rgba(0,0,0,0.5); pointer-events: none; }
-        .ui { position: absolute; bottom: 20px; width: 100%; text-align: center; }
-        button { background: #000; color: #0f0; border: 1px solid #0f0; padding: 10px; cursor: pointer; }
+        body { margin: 0; background: #000; overflow: hidden; }
+        canvas#gl-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        video#cam { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; opacity: 0; transition: 0.5s; }
+        canvas#slint-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+        /* Slint butuh pointer-events di element spesifik, tapi di sini kita buat transparan */
     </style>
 </head>
 <body>
-    <div id="log">Status: Initializing...</div>
-    <canvas id="g"></canvas>
-    <div class="ui">
-        <button onclick="shape='cube'">CUBE</button>
-        <button onclick="shape='pyramid'">PYRAMID</button>
-    </div>
+    <video id="cam" autoplay playsinline></video>
+    <canvas id="gl-canvas"></canvas>
+    <script type="module">
+        import init from './pkg/wasm_tiny.js';
+        
+        let cameraActive = false;
+        const video = document.getElementById('cam');
 
-    <script>
-        const logger = (msg) => { document.getElementById('log').innerHTML += '<br>> ' + msg; console.log(msg); };
-        const canvas = document.getElementById('g');
-        const gl = canvas.getContext('webgl');
-
-        if (!gl) logger("ERR: WebGL not found");
-
-        const vsSource = `
-            attribute vec4 aPos; attribute vec3 aCol;
-            uniform mat4 uRot, uPersp;
-            varying vec3 vCol;
-            void main() { gl_Position = uPersp * uRot * aPos; vCol = aCol; }`;
-        const fsSource = `
-            precision mediump float; varying vec3 vCol;
-            void main() { gl_FragColor = vec4(vCol, 1.0); }`;
-
-        function createShader(gl, type, src) {
-            const s = gl.createShader(type);
-            gl.shaderSource(s, src); gl.compileShader(s);
-            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) logger("Shader Err: " + gl.getShaderInfoLog(s));
-            return s;
-        }
-
-        const prog = gl.createProgram();
-        gl.attachShader(prog, createShader(gl, gl.VERTEX_SHADER, vsSource));
-        gl.attachShader(prog, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
-        gl.linkProgram(prog); gl.useProgram(prog);
-
-        const shapes = {
-            pyramid: new Float32Array([
-                0,1,0, 1,0,0, -1,-1,1, 0,1,0, 1,-1,1, 0,0,1,
-                0,1,0, 1,0,0, 1,-1,1, 0,0,1, 1,-1,-1, 0,1,0,
-                0,1,0, 1,0,0, 1,-1,-1, 0,1,0, -1,-1,-1, 0,0,1,
-                0,1,0, 1,0,0, -1,-1,-1, 0,0,1, -1,-1,1, 0,1,0
-            ]),
-            cube: new Float32Array([
-                -1,1,1, 0,1,0, 1,1,1, 0,1,0, 1,-1,1, 0,1,0, -1,1,1, 0,1,0, 1,-1,1, 0,1,0, -1,-1,1, 0,1,0,
-                -1,1,-1, 0,0.5,0, 1,1,-1, 0,0.5,0, 1,-1,-1, 0,0.5,0, -1,1,-1, 0,0.5,0, 1,-1,-1, 0,0.5,0, -1,-1,-1, 0,0.5,0,
-                1,1,1, 0,0.8,0, 1,1,-1, 0,0.8,0, 1,-1,-1, 0,0.8,0, 1,1,1, 0,0.8,0, 1,-1,-1, 0,0.8,0, 1,-1,1, 0,0.8,0,
-                -1,1,1, 0,0.8,0, -1,1,-1, 0,0.8,0, -1,-1,-1, 0,0.8,0, -1,1,1, 0,0.8,0, -1,-1,-1, 0,0.8,0, -1,-1,1, 0,0.8,0
-            ])
+        window.web_toggle_camera = async () => {
+            if(!cameraActive) {
+                const stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}});
+                video.srcObject = stream;
+                video.style.opacity = "0.4";
+                cameraActive = true;
+            } else {
+                video.srcObject.getTracks().forEach(t => t.stop());
+                video.style.opacity = "0";
+                cameraActive = false;
+            }
         };
 
-        let shape = 'pyramid';
-        const buf = gl.createBuffer();
-        const uRot = gl.getUniformLocation(prog, "uRot");
-        const uPersp = gl.getUniformLocation(prog, "uPersp");
-        const aPos = gl.getAttribLocation(prog, "aPos");
-        const aCol = gl.getAttribLocation(prog, "aCol");
+        window.web_change_model = (ptr, len) => {
+            console.log("Model changed via Slint");
+        };
 
-        gl.enable(gl.DEPTH_TEST);
-        gl.clearColor(0.05, 0.05, 0.05, 1);
-
-        let wasm, rx = 0.5, ry = 0.5, isDown = false, lx, ly;
-
-        canvas.onpointerdown = e => { isDown = true; lx = e.clientX; ly = e.clientY; };
-        window.onpointerup = () => isDown = false;
-        window.onpointermove = e => { if(isDown) { ry += (e.clientX - lx)*0.01; rx += (e.clientY - ly)*0.01; lx = e.clientX; ly = e.clientY; }};
-
-        fetch('tiny.wasm?v=' + Date.now())
-            .then(r => r.arrayBuffer())
-            .then(b => WebAssembly.instantiate(b))
-            .then(o => { wasm = o.instance; logger("WASM Ready"); loop(); })
-            .catch(e => logger("WASM Load Fail: " + e));
-
-        function loop() {
-            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-            gl.viewport(0, 0, canvas.width, canvas.height);
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-            wasm.exports.update_params(rx, ry, canvas.width/canvas.height);
-            const ptr = wasm.exports.get_mat_ptr();
-
-            gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.bufferData(gl.ARRAY_BUFFER, shapes[shape], gl.DYNAMIC_DRAW);
-            
-            gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(aPos);
-            gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 24, 12); gl.enableVertexAttribArray(aCol);
-
-            gl.uniformMatrix4fv(uRot, false, new Float32Array(wasm.exports.memory.buffer, ptr, 16));
-            gl.uniformMatrix4fv(uPersp, false, new Float32Array(wasm.exports.memory.buffer, ptr + 64, 16));
-
-            gl.drawArrays(gl.TRIANGLES, 0, shapes[shape].length/6);
-            requestAnimationFrame(loop);
-        }
+        init().then(() => {
+            console.log("Slint & WASM Loaded");
+        });
     </script>
 </body>
 </html>
