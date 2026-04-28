@@ -3,23 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Interactive Wasm 3D</title>
+    <title>Wasm 3D Pyramid</title>
     <style>
-        body { background: #000; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; color: #0f0; font-family: monospace; }
-        canvas { background: #050505; border: 1px solid #0f0; touch-action: none; cursor: grab; }
-        .hint { margin-bottom: 10px; font-size: 12px; }
+        body { background: #000; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        canvas { background: #050505; border: 1px solid #0f0; touch-action: none; }
     </style>
 </head>
 <body>
-    <div class="hint">> TOUCH OR DRAG TO ROTATE</div>
     <canvas id="c" width="400" height="400"></canvas>
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
         let wasm, isDown = false, lastX = 0, lastY = 0;
 
-        const pts = [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]];
-        const faces = [[0,1,2,3], [4,5,6,7], [0,4,7,3], [1,5,6,2], [0,4,5,1], [3,7,6,2]];
+        // Model Piramida (Vertices)
+        const pts = [
+            [0, -1, 0],    // Top (0)
+            [-1, 1, 1],   // Bottom Left Front (1)
+            [1, 1, 1],    // Bottom Right Front (2)
+            [1, 1, -1],   // Bottom Right Back (3)
+            [-1, 1, -1]   // Bottom Left Back (4)
+        ];
+
+        // Definisi Bidang (Faces - Segitiga)
+        const faces = [
+            [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], // Sisi Samping
+            [1, 2, 3], [1, 3, 4] // Alas (Dua segitiga)
+        ];
 
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
         .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; setupEvents(); loop(); });
@@ -44,27 +54,23 @@
             const ay = wasm.exports.get_angle_y();
 
             const rot = pts.map(p => {
-                // Rotasi Y (Horizontal)
                 let x = p[0] * Math.cos(ay) - p[2] * Math.sin(ay);
                 let z = p[0] * Math.sin(ay) + p[2] * Math.cos(ay);
-                // Rotasi X (Vertical)
                 let y = p[1] * Math.cos(ax) - z * Math.sin(ax);
                 z = p[1] * Math.sin(ax) + z * Math.cos(ax);
-                
                 const f = 300 / (z + 5);
                 return { x: x * f + 200, y: y * f + 200, z: z };
             });
 
-            faces.map(f => ({ indices: f, z: wasm.exports.get_face_z(rot[f[0]].z, rot[f[1]].z, rot[f[2]].z, rot[f[3]].z) }))
+            faces.map(f => ({ indices: f, z: wasm.exports.get_z_avg(rot[f[0]].z, rot[f[1]].z, rot[f[2]].z) }))
                  .sort((a, b) => b.z - a.z)
                  .forEach(f => {
                     ctx.beginPath();
-                    f.indices.forEach((idx, i) => {
-                        const p = rot[idx];
-                        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-                    });
+                    ctx.moveTo(rot[f.indices[0]].x, rot[f.indices[0]].y);
+                    ctx.lineTo(rot[f.indices[1]].x, rot[f.indices[1]].y);
+                    ctx.lineTo(rot[f.indices[2]].x, rot[f.indices[2]].y);
                     ctx.closePath();
-                    ctx.fillStyle = `rgba(0, ${150 - f.z * 20}, 0, 0.8)`;
+                    ctx.fillStyle = `rgba(0, ${150 - f.z * 25}, 0, 0.8)`;
                     ctx.fill();
                     ctx.strokeStyle = '#0f0';
                     ctx.stroke();
