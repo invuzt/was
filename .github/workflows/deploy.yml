@@ -1,27 +1,16 @@
 name: Deploy Tiny Wasm
-on:
-  push:
-    branches: [ main ]
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+on: [push]
+permissions: { contents: read, pages: write, id-token: write }
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup target add wasm32-unknown-unknown
-      - name: Build
-        run: cargo build --release --target wasm32-unknown-unknown
-      - name: Optimize
-        run: |
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo build --release --target wasm32-unknown-unknown
+      - run: |
           sudo apt-get update && sudo apt-get install -y binaryen
           wasm-opt -Oz target/wasm32-unknown-unknown/release/wasm_tiny.wasm -o tiny.wasm
-      - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: .
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: . }
+      - uses: actions/deploy-pages@v4

@@ -1,36 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wasm Cam</title>
+    <title>Wasm Face Focus</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .box { border: 1px solid #0f0; padding: 15px; text-align: left; width: 90%; max-width: 400px; margin-bottom: 10px; }
-        video { width: 90%; max-width: 400px; border: 2px solid #0f0; border-radius: 5px; background: #111; }
+        body { background: #000; color: #0f0; font-family: monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+        #container { position: relative; margin-top: 20px; }
+        video, canvas { border: 2px solid #0f0; border-radius: 8px; }
+        #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .stats { padding: 10px; font-size: 12px; width: 100%; max-width: 400px; }
     </style>
 </head>
 <body>
-    <div class="box">
-        > WASM_STATUS: <span id="ws">loading...</span><br>
-        > CAM_STATUS: <span id="cs">waiting...</span>
+    <div class="stats">
+        > WASM_DETECT: <span id="ws">loading...</span><br>
+        > FOCUS_COORD: <span id="fc">0,0</span>
     </div>
-    <video id="v" autoplay playsinline></video>
+    <div id="container">
+        <video id="v" width="320" height="240" autoplay playsinline></video>
+        <canvas id="overlay" width="320" height="240"></canvas>
+    </div>
+    <canvas id="proc" width="100" height="100" style="display:none"></canvas>
+
     <script>
         const v = document.getElementById('v');
+        const proc = document.getElementById('proc').getContext('2d', {willReadFrequently: true});
+        const ovl = document.getElementById('overlay').getContext('2d');
         const ws = document.getElementById('ws');
-        const cs = document.getElementById('cs');
+        const fc = document.getElementById('fc');
 
-        fetch('tiny.wasm?v=' + Math.random())
-            .then(r => r.arrayBuffer())
-            .then(b => WebAssembly.instantiate(b))
-            .then(o => {
-                ws.textContent = o.instance.exports.check_wasm(41) + " (READY)";
-            }).catch(e => ws.textContent = "ERR: " + e.message);
+        let wasm;
+        fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
+        .then(b => WebAssembly.instantiate(b)).then(o => {
+            wasm = o.instance;
+            ws.textContent = "ALGO_ACTIVE";
+            loop();
+        });
 
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
-            .then(s => { v.srcObject = s; cs.textContent = "ACTIVE"; })
-            .catch(e => { cs.textContent = "DENIED"; cs.style.color = "red"; });
+        navigator.mediaDevices.getUserMedia({video: {facingMode: "user"}})
+        .then(s => v.srcObject = s);
+
+        function loop() {
+            proc.drawImage(v, 0, 0, 100, 100);
+            const imgData = proc.getImageData(0, 0, 100, 100);
+            const ptr = wasm.exports.get_buffer_ptr();
+            const buf = new Uint8Array(wasm.exports.memory.buffer, ptr, 100 * 100 * 4);
+            buf.set(imgData.data);
+
+            const idx = wasm.exports.detect_brightest();
+            const x = (idx % 100) * (320/100);
+            const y = Math.floor(idx / 100) * (240/100);
+
+            ovl.clearRect(0,0,320,240);
+            ovl.strokeStyle = '#0f0';
+            ovl.lineWidth = 2;
+            ovl.strokeRect(x-20, y-20, 40, 40);
+            ovl.beginPath();
+            ovl.moveTo(x, y-5); ovl.lineTo(x, y+5);
+            ovl.moveTo(x-5, y); ovl.lineTo(x+5, y);
+            ovl.stroke();
+            
+            fc.textContent = Math.round(x) + "," + Math.round(y);
+            requestAnimationFrame(loop);
+        }
     </script>
 </body>
 </html>
