@@ -3,70 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wasm 3D Cube</title>
+    <title>Wasm 3D Fast</title>
     <style>
         body { background: #000; color: #0f0; font-family: monospace; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        canvas { border: 1px solid #0f0; box-shadow: 0 0 20px rgba(0,255,0,0.2); background: #050505; }
-        .info { margin-top: 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; }
+        canvas { border: 1px solid #0f0; background: #050505; width: 90vw; height: 90vw; max-width: 400px; max-height: 400px; }
     </style>
 </head>
 <body>
     <canvas id="c" width="400" height="400"></canvas>
-    <div class="info">> WASM_3D_ENGINE_ACTIVE</div>
-
     <script>
-        const canvas = document.getElementById('c');
-        const ctx = canvas.getContext('2d');
-        let wasm;
-        let angle = 0;
-
-        // Titik-titik kubus (x, y, z)
-        const points = [
-            [-1, -1,  1], [1, -1,  1], [1,  1,  1], [-1,  1,  1],
-            [-1, -1, -1], [1, -1, -1], [1,  1, -1], [-1,  1, -1]
-        ];
-
-        // Koneksi garis antar titik
-        const edges = [
-            [0,1], [1,2], [2,3], [3,0], [4,5], [5,6], [6,7], [7,4], [0,4], [1,5], [2,6], [3,7]
-        ];
+        const ctx = document.getElementById('c').getContext('2d');
+        let wasm, angle = 0;
+        const pts = [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]];
+        const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
 
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
         .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
 
-        function project(x, y, z) {
-            // Proyeksi sederhana dari 3D ke 2D
-            const factor = 200 / (z + 4);
-            return {
-                x: x * factor + 200,
-                y: y * factor + 200
-            };
-        }
-
         function loop() {
             ctx.clearRect(0, 0, 400, 400);
             angle += 0.03;
-
-            const projected = points.map(p => {
-                // Rotasi Y
-                let rx = p[0] * Math.cos(angle) - p[2] * Math.sin(angle);
-                let rz = p[0] * Math.sin(angle) + p[2] * Math.cos(angle);
-                // Rotasi X
-                let ry = p[1] * Math.cos(angle * 0.5) - rz * Math.sin(angle * 0.5);
-                rz = p[1] * Math.sin(angle * 0.5) + rz * Math.cos(angle * 0.5);
-                
-                return project(rx, ry, rz);
+            const projected = pts.map(p => {
+                let x = wasm.exports.rotate_y(p[0], p[2], angle);
+                let z = p[0] * Math.sin(angle) + p[2] * Math.cos(angle); // JS fallback for Z
+                let y = wasm.exports.rotate_x(p[1], z, angle * 0.5);
+                const f = 200 / (z + 4);
+                return { x: x * f + 200, y: y * f + 200 };
             });
-
             ctx.strokeStyle = '#0f0';
-            ctx.lineWidth = 2;
             edges.forEach(e => {
                 ctx.beginPath();
                 ctx.moveTo(projected[e[0]].x, projected[e[0]].y);
                 ctx.lineTo(projected[e[1]].x, projected[e[1]].y);
                 ctx.stroke();
             });
-
             requestAnimationFrame(loop);
         }
     </script>

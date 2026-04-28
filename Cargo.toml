@@ -6,4 +6,5 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-# Note: Profile release sudah di-handle oleh Workspace root kamu
+[dependencies]
+libm = "0.2.8"
