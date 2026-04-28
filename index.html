@@ -3,90 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Wasm 3D Maker</title>
+    <title>3D Fixer</title>
     <style>
         body { margin: 0; background: #000; color: #0f0; font-family: monospace; overflow: hidden; }
-        canvas { display: block; touch-action: none; }
-        #ui { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 5px; }
-        .btn { background: #111; border: 1px solid #0f0; color: #0f0; padding: 8px; cursor: pointer; font-size: 10px; }
-        .btn:active { background: #0f0; color: #000; }
-        #info { position: absolute; bottom: 10px; left: 10px; font-size: 9px; opacity: 0.6; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        #log { position: absolute; top: 10px; left: 10px; font-size: 10px; background: rgba(0,0,0,0.5); pointer-events: none; }
+        .ui { position: absolute; bottom: 20px; width: 100%; text-align: center; }
+        button { background: #000; color: #0f0; border: 1px solid #0f0; padding: 10px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div id="info">GPU_RENDER_ACTIVE // TOUCH_TO_ROTATE</div>
-    <div id="ui">
-        <button class="btn" onclick="setShape('cube')">ADD CUBE</button>
-        <button class="btn" onclick="setShape('pyramid')">ADD PYRAMID</button>
-        <button class="btn" onclick="toggleColor()">COLOR MODE</button>
-    </div>
+    <div id="log">Status: Initializing...</div>
     <canvas id="g"></canvas>
+    <div class="ui">
+        <button onclick="shape='cube'">CUBE</button>
+        <button onclick="shape='pyramid'">PYRAMID</button>
+    </div>
+
     <script>
+        const logger = (msg) => { document.getElementById('log').innerHTML += '<br>> ' + msg; console.log(msg); };
         const canvas = document.getElementById('g');
         const gl = canvas.getContext('webgl');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
 
-        const vs = `attribute vec4 aPos; attribute vec3 aCol; uniform mat4 uRot; uniform mat4 uPersp; varying vec3 vCol;
-            void main(){ gl_Position = uPersp * uRot * aPos; vCol = aCol; }`;
-        const fs = `precision mediump float; varying vec3 vCol; void main(){ gl_FragColor = vec4(vCol, 1.0); }`;
+        if (!gl) logger("ERR: WebGL not found");
 
-        const p = gl.createProgram();
-        [vs, fs].forEach((s, i) => {
-            const sh = gl.createShader(i ? gl.FRAGMENT_SHADER : gl.VERTEX_SHADER);
-            gl.shaderSource(sh, s); gl.compileShader(sh); gl.attachShader(p, sh);
-        });
-        gl.linkProgram(p); gl.useProgram(p);
+        const vsSource = `
+            attribute vec4 aPos; attribute vec3 aCol;
+            uniform mat4 uRot, uPersp;
+            varying vec3 vCol;
+            void main() { gl_Position = uPersp * uRot * aPos; vCol = aCol; }`;
+        const fsSource = `
+            precision mediump float; varying vec3 vCol;
+            void main() { gl_FragColor = vec4(vCol, 1.0); }`;
+
+        function createShader(gl, type, src) {
+            const s = gl.createShader(type);
+            gl.shaderSource(s, src); gl.compileShader(s);
+            if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) logger("Shader Err: " + gl.getShaderInfoLog(s));
+            return s;
+        }
+
+        const prog = gl.createProgram();
+        gl.attachShader(prog, createShader(gl, gl.VERTEX_SHADER, vsSource));
+        gl.attachShader(prog, createShader(gl, gl.FRAGMENT_SHADER, fsSource));
+        gl.linkProgram(prog); gl.useProgram(prog);
 
         const shapes = {
             pyramid: new Float32Array([
-                0,1,0, 0,1,0, -1,-1,1, 0,0.5,0, 1,-1,1, 0,0.5,0,
-                0,1,0, 0,1,0, 1,-1,1, 0,0.5,0, 1,-1,-1, 0,0.5,0,
-                0,1,0, 0,1,0, 1,-1,-1, 0,0.5,0, -1,-1,-1, 0,0.5,0,
-                0,1,0, 0,1,0, -1,-1,-1, 0,0.5,0, -1,-1,1, 0,0.5,0
+                0,1,0, 1,0,0, -1,-1,1, 0,1,0, 1,-1,1, 0,0,1,
+                0,1,0, 1,0,0, 1,-1,1, 0,0,1, 1,-1,-1, 0,1,0,
+                0,1,0, 1,0,0, 1,-1,-1, 0,1,0, -1,-1,-1, 0,0,1,
+                0,1,0, 1,0,0, -1,-1,-1, 0,0,1, -1,-1,1, 0,1,0
             ]),
             cube: new Float32Array([
                 -1,1,1, 0,1,0, 1,1,1, 0,1,0, 1,-1,1, 0,1,0, -1,1,1, 0,1,0, 1,-1,1, 0,1,0, -1,-1,1, 0,1,0,
-                -1,1,-1, 0,0.7,0, 1,1,-1, 0,0.7,0, 1,-1,-1, 0,0.7,0, -1,1,-1, 0,0.7,0, 1,-1,-1, 0,0.7,0, -1,-1,-1, 0,0.7,0,
-                1,1,1, 0,0.4,0, 1,1,-1, 0,0.4,0, 1,-1,-1, 0,0.4,0, 1,1,1, 0,0.4,0, 1,-1,-1, 0,0.4,0, 1,-1,1, 0,0.4,0,
-                -1,1,1, 0,0.4,0, -1,1,-1, 0,0.4,0, -1,-1,-1, 0,0.4,0, -1,1,1, 0,0.4,0, -1,-1,-1, 0,0.4,0, -1,-1,1, 0,0.4,0
+                -1,1,-1, 0,0.5,0, 1,1,-1, 0,0.5,0, 1,-1,-1, 0,0.5,0, -1,1,-1, 0,0.5,0, 1,-1,-1, 0,0.5,0, -1,-1,-1, 0,0.5,0,
+                1,1,1, 0,0.8,0, 1,1,-1, 0,0.8,0, 1,-1,-1, 0,0.8,0, 1,1,1, 0,0.8,0, 1,-1,-1, 0,0.8,0, 1,-1,1, 0,0.8,0,
+                -1,1,1, 0,0.8,0, -1,1,-1, 0,0.8,0, -1,-1,-1, 0,0.8,0, -1,1,1, 0,0.8,0, -1,-1,-1, 0,0.8,0, -1,-1,1, 0,0.8,0
             ])
         };
 
-        let current = shapes.pyramid;
-        let isRGB = false;
-        const setShape = (s) => current = shapes[s];
-        const toggleColor = () => isRGB = !isRGB;
-
+        let shape = 'pyramid';
         const buf = gl.createBuffer();
-        const aPos = gl.getAttribLocation(p, "aPos");
-        const aCol = gl.getAttribLocation(p, "aCol");
-        const uRot = gl.getUniformLocation(p, "uRot");
-        const uPersp = gl.getUniformLocation(p, "uPersp");
+        const uRot = gl.getUniformLocation(prog, "uRot");
+        const uPersp = gl.getUniformLocation(prog, "uPersp");
+        const aPos = gl.getAttribLocation(prog, "aPos");
+        const aCol = gl.getAttribLocation(prog, "aCol");
 
         gl.enable(gl.DEPTH_TEST);
-        let wasm, rx=0, ry=0, down=false, lx, ly;
+        gl.clearColor(0.05, 0.05, 0.05, 1);
 
-        canvas.onpointerdown = e => { down=true; lx=e.clientX; ly=e.clientY; };
-        window.onpointerup = () => down=false;
-        window.onpointermove = e => { if(down){ ry+=(e.clientX-lx)*0.01; rx+=(e.clientY-ly)*0.01; lx=e.clientX; ly=e.clientY; }};
+        let wasm, rx = 0.5, ry = 0.5, isDown = false, lx, ly;
 
-        fetch('tiny.wasm?v='+Math.random()).then(r=>r.arrayBuffer()).then(b=>WebAssembly.instantiate(b)).then(o=>{ wasm=o.instance; loop(); });
+        canvas.onpointerdown = e => { isDown = true; lx = e.clientX; ly = e.clientY; };
+        window.onpointerup = () => isDown = false;
+        window.onpointermove = e => { if(isDown) { ry += (e.clientX - lx)*0.01; rx += (e.clientY - ly)*0.01; lx = e.clientX; ly = e.clientY; }};
+
+        fetch('tiny.wasm?v=' + Date.now())
+            .then(r => r.arrayBuffer())
+            .then(b => WebAssembly.instantiate(b))
+            .then(o => { wasm = o.instance; logger("WASM Ready"); loop(); })
+            .catch(e => logger("WASM Load Fail: " + e));
 
         function loop() {
+            canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
             wasm.exports.update_params(rx, ry, canvas.width/canvas.height);
             const ptr = wasm.exports.get_mat_ptr();
 
             gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-            gl.bufferData(gl.ARRAY_BUFFER, current, gl.STATIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, shapes[shape], gl.DYNAMIC_DRAW);
+            
             gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 24, 0); gl.enableVertexAttribArray(aPos);
             gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 24, 12); gl.enableVertexAttribArray(aCol);
 
             gl.uniformMatrix4fv(uRot, false, new Float32Array(wasm.exports.memory.buffer, ptr, 16));
-            gl.uniformMatrix4fv(uPersp, false, new Float32Array(wasm.exports.memory.buffer, ptr+64, 16));
+            gl.uniformMatrix4fv(uPersp, false, new Float32Array(wasm.exports.memory.buffer, ptr + 64, 16));
 
-            gl.drawArrays(gl.TRIANGLES, 0, current.length/6);
+            gl.drawArrays(gl.TRIANGLES, 0, shapes[shape].length/6);
             requestAnimationFrame(loop);
         }
     </script>
