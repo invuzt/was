@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wasm 3D Fast</title>
+    <title>Solid Wasm 3D</title>
     <style>
-        body { background: #000; color: #0f0; font-family: monospace; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        canvas { border: 1px solid #0f0; background: #050505; width: 90vw; height: 90vw; max-width: 400px; max-height: 400px; }
+        body { background: #000; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        canvas { background: #000; cursor: crosshair; }
     </style>
 </head>
 <body>
@@ -14,29 +14,51 @@
     <script>
         const ctx = document.getElementById('c').getContext('2d');
         let wasm, angle = 0;
+        
         const pts = [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]];
-        const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+        const faces = [
+            [0,1,2,3], [4,5,6,7], [0,4,7,3], [1,5,6,2], [0,4,5,1], [3,7,6,2]
+        ];
 
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
         .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
 
         function loop() {
             ctx.clearRect(0, 0, 400, 400);
-            angle += 0.03;
-            const projected = pts.map(p => {
-                let x = wasm.exports.rotate_y(p[0], p[2], angle);
-                let z = p[0] * Math.sin(angle) + p[2] * Math.cos(angle); // JS fallback for Z
-                let y = wasm.exports.rotate_x(p[1], z, angle * 0.5);
-                const f = 200 / (z + 4);
-                return { x: x * f + 200, y: y * f + 200 };
+            angle += 0.02;
+
+            const rot = pts.map(p => {
+                let x = p[0] * Math.cos(angle) - p[2] * Math.sin(angle);
+                let z = p[0] * Math.sin(angle) + p[2] * Math.cos(angle);
+                let y = p[1] * Math.cos(angle * 0.5) - z * Math.sin(angle * 0.5);
+                z = p[1] * Math.sin(angle * 0.5) + z * Math.cos(angle * 0.5);
+                const f = 300 / (z + 5);
+                return { x: x * f + 200, y: y * f + 200, z: z };
             });
-            ctx.strokeStyle = '#0f0';
-            edges.forEach(e => {
+
+            // Hitung Z-Depth tiap face & Sorting agar face belakang tidak menimpa depan
+            const sortedFaces = faces.map(f => {
+                const zDepth = wasm.exports.get_face_z(rot[f[0]].z, rot[f[1]].z, rot[f[2]].z, rot[f[3]].z);
+                return { indices: f, z: zDepth };
+            }).sort((a, b) => b.z - a.z);
+
+            sortedFaces.forEach(f => {
+                const p = f.indices;
+                const shade = wasm.exports.calculate_shading(f.z);
+                
                 ctx.beginPath();
-                ctx.moveTo(projected[e[0]].x, projected[e[0]].y);
-                ctx.lineTo(projected[e[1]].x, projected[e[1]].y);
+                ctx.moveTo(rot[p[0]].x, rot[p[0]].y);
+                ctx.lineTo(rot[p[1]].x, rot[p[1]].y);
+                ctx.lineTo(rot[p[2]].x, rot[p[2]].y);
+                ctx.lineTo(rot[p[3]].x, rot[p[3]].y);
+                ctx.closePath();
+
+                ctx.fillStyle = `rgb(0, ${shade}, 0)`;
+                ctx.fill();
+                ctx.strokeStyle = '#0f0';
                 ctx.stroke();
             });
+
             requestAnimationFrame(loop);
         }
     </script>
