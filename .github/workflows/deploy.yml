@@ -3,7 +3,7 @@ on:
   push:
     branches: [ main ]
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 jobs:
@@ -19,10 +19,9 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y binaryen
           wasm-opt -Oz target/wasm32-unknown-unknown/release/wasm_tiny.wasm -o tiny.wasm
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Upload Artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
-          publish_files: cam.html,tiny.wasm
-          publish_branch: gh-pages
+          path: .
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
