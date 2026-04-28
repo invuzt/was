@@ -2,63 +2,73 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solid Wasm 3D</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Interactive Wasm 3D</title>
     <style>
-        body { background: #000; margin: 0; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        canvas { background: #000; cursor: crosshair; }
+        body { background: #000; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; color: #0f0; font-family: monospace; }
+        canvas { background: #050505; border: 1px solid #0f0; touch-action: none; cursor: grab; }
+        .hint { margin-bottom: 10px; font-size: 12px; }
     </style>
 </head>
 <body>
+    <div class="hint">> TOUCH OR DRAG TO ROTATE</div>
     <canvas id="c" width="400" height="400"></canvas>
     <script>
-        const ctx = document.getElementById('c').getContext('2d');
-        let wasm, angle = 0;
-        
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        let wasm, isDown = false, lastX = 0, lastY = 0;
+
         const pts = [[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1],[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1]];
-        const faces = [
-            [0,1,2,3], [4,5,6,7], [0,4,7,3], [1,5,6,2], [0,4,5,1], [3,7,6,2]
-        ];
+        const faces = [[0,1,2,3], [4,5,6,7], [0,4,7,3], [1,5,6,2], [0,4,5,1], [3,7,6,2]];
 
         fetch('tiny.wasm?v=' + Math.random()).then(r => r.arrayBuffer())
-        .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; loop(); });
+        .then(b => WebAssembly.instantiate(b)).then(o => { wasm = o.instance; setupEvents(); loop(); });
+
+        function setupEvents() {
+            const down = e => { isDown = true; const t = e.touches ? e.touches[0] : e; lastX = t.clientX; lastY = t.clientY; };
+            const up = () => { isDown = false; };
+            const move = e => {
+                if (!isDown) return;
+                const t = e.touches ? e.touches[0] : e;
+                wasm.exports.update_rotation(t.clientX - lastX, t.clientY - lastY);
+                lastX = t.clientX; lastY = t.clientY;
+            };
+            canvas.addEventListener('mousedown', down); canvas.addEventListener('touchstart', down);
+            window.addEventListener('mouseup', up); window.addEventListener('touchend', up);
+            window.addEventListener('mousemove', move); window.addEventListener('touchmove', move);
+        }
 
         function loop() {
             ctx.clearRect(0, 0, 400, 400);
-            angle += 0.02;
+            const ax = wasm.exports.get_angle_x();
+            const ay = wasm.exports.get_angle_y();
 
             const rot = pts.map(p => {
-                let x = p[0] * Math.cos(angle) - p[2] * Math.sin(angle);
-                let z = p[0] * Math.sin(angle) + p[2] * Math.cos(angle);
-                let y = p[1] * Math.cos(angle * 0.5) - z * Math.sin(angle * 0.5);
-                z = p[1] * Math.sin(angle * 0.5) + z * Math.cos(angle * 0.5);
+                // Rotasi Y (Horizontal)
+                let x = p[0] * Math.cos(ay) - p[2] * Math.sin(ay);
+                let z = p[0] * Math.sin(ay) + p[2] * Math.cos(ay);
+                // Rotasi X (Vertical)
+                let y = p[1] * Math.cos(ax) - z * Math.sin(ax);
+                z = p[1] * Math.sin(ax) + z * Math.cos(ax);
+                
                 const f = 300 / (z + 5);
                 return { x: x * f + 200, y: y * f + 200, z: z };
             });
 
-            // Hitung Z-Depth tiap face & Sorting agar face belakang tidak menimpa depan
-            const sortedFaces = faces.map(f => {
-                const zDepth = wasm.exports.get_face_z(rot[f[0]].z, rot[f[1]].z, rot[f[2]].z, rot[f[3]].z);
-                return { indices: f, z: zDepth };
-            }).sort((a, b) => b.z - a.z);
-
-            sortedFaces.forEach(f => {
-                const p = f.indices;
-                const shade = wasm.exports.calculate_shading(f.z);
-                
-                ctx.beginPath();
-                ctx.moveTo(rot[p[0]].x, rot[p[0]].y);
-                ctx.lineTo(rot[p[1]].x, rot[p[1]].y);
-                ctx.lineTo(rot[p[2]].x, rot[p[2]].y);
-                ctx.lineTo(rot[p[3]].x, rot[p[3]].y);
-                ctx.closePath();
-
-                ctx.fillStyle = `rgb(0, ${shade}, 0)`;
-                ctx.fill();
-                ctx.strokeStyle = '#0f0';
-                ctx.stroke();
-            });
-
+            faces.map(f => ({ indices: f, z: wasm.exports.get_face_z(rot[f[0]].z, rot[f[1]].z, rot[f[2]].z, rot[f[3]].z) }))
+                 .sort((a, b) => b.z - a.z)
+                 .forEach(f => {
+                    ctx.beginPath();
+                    f.indices.forEach((idx, i) => {
+                        const p = rot[idx];
+                        if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+                    });
+                    ctx.closePath();
+                    ctx.fillStyle = `rgba(0, ${150 - f.z * 20}, 0, 0.8)`;
+                    ctx.fill();
+                    ctx.strokeStyle = '#0f0';
+                    ctx.stroke();
+                 });
             requestAnimationFrame(loop);
         }
     </script>
